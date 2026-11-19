@@ -19,6 +19,18 @@ Hermes already persists each run to `$HERMES_HOME/cron/output/<job-id>/*.md`. Th
 
 Reports may contain plain text, Markdown, and `MEDIA:/absolute/path` directives. Referenced files are accepted only when they resolve to a regular file under the job's own `$HERMES_HOME/cron/output/<job-id>/` directory, the plugin's `$HERMES_HOME/cron/bulletin-assets/` directory, `$HERMES_HOME/images/`, or the job workdir — the rest of the profile home (`.env`, credentials) is never readable through the asset route. Write generated artifacts to the job output directory, the plugin's `bulletin-assets/` directory, or the job workdir. Paths returned by the list API are opaque; raw server paths are not exposed.
 
+## Choosing which jobs show up
+
+Optional file `<hermes root>/cron/bulletin-config.json`:
+
+```json
+{ "watched_jobs": ["<job id>", "<job id>"], "hide_silent": true }
+```
+
+- `watched_jobs`: only these job ids appear. Empty or missing shows every job.
+- `hide_silent`: drops runs that produced nothing to read (agent skipped by its script gate, empty script output).
+- Failed runs of a watched job always show, even with `hide_silent`.
+
 ## Desktop
 
 Open **Cron Bulletin** from the sidebar or command palette. The page provides:

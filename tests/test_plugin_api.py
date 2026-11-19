@@ -244,3 +244,49 @@ def test_reports_scope_all_aggregates_without_profile_param(tmp_path: Path, monk
     resp = TestClient(app).get("/reports?scope=all")
     assert resp.status_code == 200 and resp.json()["profile"] == "all"
     assert TestClient(app).get("/reports?scope=bogus").status_code == 422
+
+
+def _write_config(home: Path, payload: dict) -> None:
+    import json
+
+    (home / "cron").mkdir(parents=True, exist_ok=True)
+    (home / "cron" / "bulletin-config.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_config_absent_changes_nothing(tmp_path: Path):
+    api = load_module()
+    write_report(tmp_path, "job-a", "r1.md", "# Cron Job: A\n\n**Job ID:** job-a\n\nScript gate returned `wakeAgent=false` — agent skipped.", 10)
+    assert len(api.list_reports(tmp_path)) == 1
+
+
+def test_watched_jobs_allowlist_and_hide_silent(tmp_path: Path):
+    api = load_module()
+    real = "# Cron Job: PR reviews\n\n**Job ID:** job-pr\n\n---\n\nreviewed pull request 12"
+    silent_stub = "# Cron Job: PR reviews\n\n**Job ID:** job-pr\n\n**Status:** silent (empty output)"
+    gated = "# Cron Job: Meetings\n\n**Job ID:** job-mt\n\nScript gate returned `wakeAgent=false` — agent skipped."
+    meeting = "# Cron Job: Meetings\n\n**Job ID:** job-mt\n\n## Response\n\n## SUMMARY\n\n- Sync"
+    other = "# Cron Job: GC\n\n**Job ID:** job-gc\n\n---\n\ncleaned 3 items"
+    failed_other = "# Cron Job: GC (FAILED)\n\n**Job ID:** job-gc\n\n## Error\n\nboom"
+    for i, (job, body) in enumerate([("job-pr", real), ("job-pr", silent_stub), ("job-mt", gated), ("job-mt", meeting), ("job-gc", other), ("job-gc", failed_other)]):
+        write_report(tmp_path, job, f"r{i}.md", body, 100 + i)
+    _write_config(tmp_path, {"watched_jobs": ["job-pr", "job-mt"], "hide_silent": True})
+    rows = api.list_reports(tmp_path)
+    assert sorted(r["job_id"] for r in rows) == ["job-mt", "job-pr"]
+    assert all("silent" not in r["markdown"] and "agent skipped" not in r["markdown"] for r in rows)
+    # Silent stays visible when only the allowlist is set.
+    _write_config(tmp_path, {"watched_jobs": ["job-pr", "job-mt"]})
+    assert len(api.list_reports(tmp_path)) == 4
+
+
+def test_failed_run_of_watched_job_is_never_hidden(tmp_path: Path):
+    api = load_module()
+    write_report(tmp_path, "job-pr", "r0.md", "# Cron Job: PR reviews (FAILED)\n\n**Job ID:** job-pr\n\n## Error\n\nboom", 10)
+    _write_config(tmp_path, {"watched_jobs": ["job-pr"], "hide_silent": True})
+    assert [r["status"] for r in api.list_reports(tmp_path)] == ["failed"]
+
+
+def test_bad_config_is_ignored(tmp_path: Path):
+    api = load_module()
+    (tmp_path / "cron").mkdir()
+    (tmp_path / "cron" / "bulletin-config.json").write_text("not json", encoding="utf-8")
+    assert api.read_config(tmp_path) == {"watched_jobs": set(), "hide_silent": False}

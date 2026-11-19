@@ -162,6 +162,33 @@ def _write_state(home: Path, state: dict) -> None:
     temporary.replace(target)
 
 
+_CONFIG_FILENAME = "bulletin-config.json"
+_SILENT_MARKERS = ("wakeAgent=false", "**Status:** silent")
+
+
+def read_config(home: Path | str) -> dict:
+    """Optional ``<root>/cron/bulletin-config.json``: ``{"watched_jobs": [job ids], "hide_silent": bool}``.
+
+    Absent or invalid file means no filtering, so a fresh install behaves exactly as before.
+    ``watched_jobs`` is an allowlist by job id; an empty list watches every job.
+    """
+    root, _ = _home_context(Path(home).resolve())
+    try:
+        raw = json.loads((root / "cron" / _CONFIG_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    jobs = raw.get("watched_jobs")
+    watched = {str(item) for item in jobs} if isinstance(jobs, list) else set()
+    return {"watched_jobs": watched, "hide_silent": raw.get("hide_silent") is True}
+
+
+def is_silent_report(text: str, markdown: str) -> bool:
+    """A run that produced nothing to read: agent skipped by its script gate, empty script output, or [SILENT]."""
+    return any(marker in text for marker in _SILENT_MARKERS) or markdown.lstrip().startswith("[SILENT]")
+
+
 def _home_context(home: Path) -> tuple[Path, str]:
     """Return the Hermes root and the active profile name, if profile-scoped."""
     if home.parent.name == "profiles":
@@ -224,6 +251,8 @@ def list_reports(
     state = _read_state(home_path)
     archived_ids = set(state.get("archived", {}))
     deleted_ids = set(state.get("deleted", {}))
+    config = read_config(home_path)
+    watched = config["watched_jobs"]
     try:
         candidates = [path for path in output_root.glob("*/*.md") if path.is_file()]
     except OSError:
@@ -242,8 +271,12 @@ def list_reports(
         except (OSError, UnicodeError):
             continue
         job_id = path.parent.name
+        if watched and job_id not in watched:
+            continue
         report = parse_report(path, text, allowed_roots=_allowed_roots(home_path, job_id, workdirs))
         if report["id"] in deleted_ids:
+            continue
+        if config["hide_silent"] and report["status"] != "failed" and is_silent_report(text, report["markdown"]):
             continue
         is_archived = report["id"] in archived_ids
         if archived == "exclude" and is_archived:
