@@ -179,6 +179,7 @@ def test_delete_hides_record_but_preserves_cron_output(tmp_path: Path):
 def test_profile_home_resolves_default_and_named_profile(tmp_path: Path):
     api = load_module()
     (tmp_path / "profiles" / "alpha").mkdir(parents=True)
+    (tmp_path / "profiles" / "alpha" / "config.yaml").write_text("model: x\n", encoding="utf-8")
 
     assert api.profile_home(tmp_path, "default") == tmp_path
     assert api.profile_home(tmp_path, "alpha") == tmp_path / "profiles" / "alpha"
@@ -290,3 +291,23 @@ def test_bad_config_is_ignored(tmp_path: Path):
     (tmp_path / "cron").mkdir()
     (tmp_path / "cron" / "bulletin-config.json").write_text("not json", encoding="utf-8")
     assert api.read_config(tmp_path) == {"watched_jobs": set(), "hide_silent": False}
+
+
+def test_profile_options_skip_leftover_shells(tmp_path: Path):
+    api = load_module()
+    live = tmp_path / "profiles" / "alpha"
+    live.mkdir(parents=True)
+    (live / "config.yaml").write_text("model: x\n", encoding="utf-8")
+    ghost = tmp_path / "profiles" / "ghost"
+    ghost.mkdir()
+    (ghost / "state.db").write_text("", encoding="utf-8")
+    (tmp_path / "profiles" / ".deleted").mkdir()
+    (tmp_path / "profiles" / ".deleted" / "ghost").write_text("deleted\n", encoding="utf-8")
+    (tmp_path / "profiles" / "empty").mkdir()
+    (tmp_path / "profiles" / ".staging-1").mkdir()
+    tomb = tmp_path / "profiles" / "buried"
+    tomb.mkdir()
+    (tomb / "config.yaml").write_text("model: x\n", encoding="utf-8")
+    (tmp_path / "profiles" / ".deleted" / "buried").write_text("deleted\n", encoding="utf-8")
+    ids = [row["id"] for row in api.profile_options(tmp_path)]
+    assert ids == ["all", "default", "alpha"], ids

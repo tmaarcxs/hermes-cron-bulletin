@@ -196,6 +196,25 @@ def _home_context(home: Path) -> tuple[Path, str]:
     return home, "default"
 
 
+def _is_live_profile(path: Path) -> bool:
+    """Skip leftover shells (a deleted profile that kept a state.db, a cache dir, a staging dir).
+
+    Uses Hermes' own definition when available so the list matches ``hermes profile list``;
+    otherwise falls back to requiring a real profile file, not just runtime side effects.
+    """
+    if path.name.startswith("."):
+        return False
+    try:
+        from hermes_constants import named_profile_is_live
+
+        return bool(named_profile_is_live(path))
+    except ImportError:
+        tombstone = path.parent / ".deleted" / path.name
+        return not tombstone.exists() and any(
+            (path / marker).is_file() for marker in ("config.yaml", "profile.yaml", "SOUL.md")
+        )
+
+
 def profile_options(active_home: Path | str) -> list[dict]:
     home = Path(active_home).resolve()
     root, active_name = _home_context(home)
@@ -205,7 +224,7 @@ def profile_options(active_home: Path | str) -> list[dict]:
     ]
     profiles_dir = root / "profiles"
     try:
-        names = sorted(path.name for path in profiles_dir.iterdir() if path.is_dir())
+        names = sorted(path.name for path in profiles_dir.iterdir() if path.is_dir() and _is_live_profile(path))
     except OSError:
         names = []
     for name in names:
