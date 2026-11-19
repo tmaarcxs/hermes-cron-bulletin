@@ -236,6 +236,7 @@ def test_reports_scope_all_aggregates_without_profile_param(tmp_path: Path, monk
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
+    api = load_module()
     monkeypatch.setattr(api, "get_hermes_home", lambda: tmp_path)
     (tmp_path / "profiles" / "alpha").mkdir(parents=True)
     app = FastAPI()
