@@ -261,7 +261,7 @@ function BulletinPage() {
   })
   const reportsQuery = useQuery({
     queryKey: [ID, 'reports', profile, archived],
-    queryFn: () => pluginContext.rest(`/reports?limit=200&profile=${encodeURIComponent(profile)}&archived=${archived}`),
+    queryFn: () => pluginContext.rest(`/reports?limit=200&${profile === 'all' ? 'scope=all' : `profile=${encodeURIComponent(profile)}`}&archived=${archived}`),
     refetchInterval: 15000
   })
   const reports = reportsQuery.data?.reports || []

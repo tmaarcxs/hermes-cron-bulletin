@@ -288,7 +288,12 @@ def reports_endpoint(
     status: str = Query("all", pattern="^(all|completed|failed)$"),
     archived: str = Query("exclude", pattern="^(exclude|only|all)$"),
     profile: str = Query("active", max_length=100),
+    scope: str = Query("", pattern="^(|all)$"),
 ):
+    # The host resolves any ?profile= value as a real profile folder, so the
+    # aggregate view is requested with ?scope=all instead of ?profile=all.
+    if scope == "all":
+        profile = "all"
     active_home = Path(get_hermes_home())
     if profile == "all":
         rows = []

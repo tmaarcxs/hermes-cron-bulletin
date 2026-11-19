@@ -230,3 +230,16 @@ def test_media_in_plugin_artifact_dir_is_attached(tmp_path: Path):
     names = [row["name"] for row in api.list_reports(tmp_path)[0]["attachments"]]
 
     assert names == ["report.html"]
+
+
+def test_reports_scope_all_aggregates_without_profile_param(tmp_path: Path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(api, "get_hermes_home", lambda: tmp_path)
+    (tmp_path / "profiles" / "alpha").mkdir(parents=True)
+    app = FastAPI()
+    app.include_router(api.router)
+    resp = TestClient(app).get("/reports?scope=all")
+    assert resp.status_code == 200 and resp.json()["profile"] == "all"
+    assert TestClient(app).get("/reports?scope=bogus").status_code == 422
